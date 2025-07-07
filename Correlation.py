@@ -88,8 +88,6 @@ def load_and_prepare_data(filename='fused_data_3.csv'):
     # Convert timestamp to datetime
     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
 
-    # Convert DMA density from g/cm³ to kg/m³ (multiply by 1000)
-    df['Density'] = df['Density'] * 1000
 
 
     # Add weather data
@@ -312,6 +310,206 @@ def create_density_timeseries_plot(df, df_analysis, window_size=50):
     except Exception as e:
         print(f"Error creating density time series plot: {e}")
 #######################################################
+
+
+def calculate_unexplainable_difference(df, instrument='MGCE1', density_column='Density'):
+    """
+    Calculate the unexplainable difference between DMA (reference) and TrueDyne (unit under test)
+    after removing systematic offset from TrueDyne.
+    This shows the remaining noise/time instability after perfect calibration of TrueDyne.
+
+    Args:
+        df: DataFrame with fused data
+        instrument: 'MGCE1' or 'DGFI1'
+        density_column: Column name for DMA density data (reference)
+
+    Returns:
+        dict: Statistics about unexplainable differences
+    """
+
+    # DMA is the reference, TrueDyne is unit under test
+    dma_reference = df[density_column]
+    truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
+
+    # Remove rows with NaN values
+    valid_mask = ~(pd.isna(dma_reference) | pd.isna(truedyne_test))
+    dma_clean = dma_reference[valid_mask]
+    truedyne_clean = truedyne_test[valid_mask]
+
+    if len(dma_clean) == 0:
+        return None
+
+    # Calculate the systematic offset (TrueDyne bias relative to DMA reference)
+    systematic_offset = np.mean(truedyne_clean - dma_clean)
+
+    # Remove the systematic offset from TrueDyne (calibrate TrueDyne to DMA)
+    truedyne_corrected = truedyne_clean - systematic_offset
+
+    # Calculate residual differences after calibrating TrueDyne to DMA
+    residual_differences = truedyne_corrected - dma_clean
+
+    # Calculate statistics (all in kg/m³)
+    stats = {
+        'systematic_offset_kg_m3': systematic_offset,  # Positive = TrueDyne reads high
+        'residual_std_kg_m3': np.std(residual_differences),
+        'residual_mean_kg_m3': np.mean(residual_differences),  # Should be ~0 after correction
+        'residual_max_abs_kg_m3': np.max(np.abs(residual_differences)),
+        'residual_rms_kg_m3': np.sqrt(np.mean(residual_differences ** 2)),
+        'correlation_coefficient': np.corrcoef(truedyne_corrected, dma_clean)[0, 1],
+        'number_of_points': len(residual_differences)
+    }
+
+    return stats
+
+
+def print_unexplainable_difference_report(df):
+    """
+    Print a comprehensive report of unexplainable differences for both instruments.
+    DMA is treated as reference, TrueDyne instruments as units under test.
+    """
+    print("\n" + "=" * 80)
+    print("UNEXPLAINABLE DIFFERENCE ANALYSIS")
+    print("(TrueDyne vs DMA Reference - After Perfect Calibration)")
+    print("=" * 80)
+
+    for instrument in ['MGCE1', 'DGFI1']:
+        print(f"\n{instrument} (Unit Under Test) vs DMA (Reference):")
+        print("-" * 50)
+
+        stats = calculate_unexplainable_difference(df, instrument)
+
+        if stats is None:
+            print(f"No valid data for {instrument}")
+            continue
+
+        print(f"Number of data points: {stats['number_of_points']}")
+        print(f"TrueDyne systematic bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³")
+        if stats['systematic_offset_kg_m3'] > 0:
+            print(f"  (TrueDyne reads {stats['systematic_offset_kg_m3']:.3f} kg/m³ higher than DMA)")
+        else:
+            print(f"  (TrueDyne reads {abs(stats['systematic_offset_kg_m3']):.3f} kg/m³ lower than DMA)")
+        print(f"After calibrating TrueDyne to DMA reference:")
+        print(f"  Residual mean: {stats['residual_mean_kg_m3']:.3f} kg/m³")
+        print(f"  Residual std:  {stats['residual_std_kg_m3']:.3f} kg/m³")
+        print(f"  Residual RMS:  {stats['residual_rms_kg_m3']:.3f} kg/m³")
+        print(f"  Max deviation: {stats['residual_max_abs_kg_m3']:.3f} kg/m³")
+        print(f"  Correlation:   {stats['correlation_coefficient']:.6f}")
+
+
+def plot_offset_corrected_comparison(df, instrument='MGCE1'):
+    """
+    Create a plot showing the comparison before and after offset correction.
+    DMA is the reference, TrueDyne is corrected to match DMA.
+    """
+    stats = calculate_unexplainable_difference(df, instrument)
+
+    if stats is None:
+        print(f"No valid data for {instrument}")
+        return
+
+    # Prepare data
+    dma_reference = df['Density']  # DMA is reference (no conversion needed)
+    truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
+    time_data = pd.to_datetime(df['Timestamp'])
+
+    # Remove NaN values
+    valid_mask = ~(pd.isna(dma_reference) | pd.isna(truedyne_test))
+    dma_clean = dma_reference[valid_mask]
+    truedyne_clean = truedyne_test[valid_mask]
+    time_clean = time_data[valid_mask]
+
+    # Apply offset correction to TrueDyne (calibrate to DMA reference)
+    truedyne_corrected = truedyne_clean - stats['systematic_offset_kg_m3']
+
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=(
+            f'{instrument} vs DMA: Original Data',
+            f'{instrument} vs DMA: After Calibrating {instrument} to DMA Reference'
+        ),
+        vertical_spacing=0.1
+    )
+
+    # Original data
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=dma_clean,
+        mode='lines', name='DMA Reference',
+        line=dict(color='red', width=2)
+    ), row=1, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=truedyne_clean,
+        mode='lines', name=f'{instrument} Original',
+        line=dict(color='blue', width=2)
+    ), row=1, col=1)
+
+    # Corrected data
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=dma_clean,
+        mode='lines', name='DMA Reference',
+        line=dict(color='red', width=2)
+    ), row=2, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=truedyne_corrected,
+        mode='lines', name=f'{instrument} Calibrated',
+        line=dict(color='blue', width=2)
+    ), row=2, col=1)
+
+    # Update layout
+    fig.update_layout(
+        title=f'TrueDyne {instrument} Calibration to DMA Reference',
+        height=800,
+        template='plotly_white'
+    )
+
+    fig.update_yaxes(title_text="Density [kg/m³]", row=1, col=1)
+    fig.update_yaxes(title_text="Density [kg/m³]", row=2, col=1)
+    fig.update_xaxes(title_text="Time", row=2, col=1)
+
+    # Add text box with statistics
+    bias_direction = "higher" if stats['systematic_offset_kg_m3'] > 0 else "lower"
+    fig.add_annotation(
+        x=0.02, y=0.98,
+        text=(f"TrueDyne bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction})<br>"
+              f"After calibration:<br>"
+              f"Residual RMS: {stats['residual_rms_kg_m3']:.3f} kg/m³<br>"
+              f"Correlation: {stats['correlation_coefficient']:.4f}"),
+        showarrow=False,
+        xref="paper", yref="paper",
+        xanchor="left", yanchor="top",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="black",
+        borderwidth=1
+    )
+
+    # Save plot
+    html_file = f"truedyne_{instrument.lower()}_calibration_to_dma.html"
+    fig.write_html(html_file)
+    print(f"Saved: {html_file}")
+
+    return fig
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#############################################
 def create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1', window_size=50):
     """Create plot showing the difference between DMA and specified TrueDyne instrument rolling averages."""
     print(f"Creating DMA - {instrument} rolling difference plot...")
@@ -339,7 +537,7 @@ def create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGC
         fig = go.Figure()
 
         # Create error bar mask for every 100th point (shifted by 50)
-        error_mask = (np.arange(len(df_analysis)) + 50) % 100 == 0
+        error_mask = (np.arange(len(df_analysis)) + 50) % 15 == 0
         diff_error_array = np.where(error_mask, df_analysis[std_column], np.nan)
 
         # Set colors based on instrument

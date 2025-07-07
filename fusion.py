@@ -7,6 +7,32 @@ import sys
 def parse_timestamps(df, timestamp_col):
     """
     Parse timestamps from different formats to datetime objects
+    Convert everything to CEST (Europe/Vienna timezone)
+    """
+    try:
+        timestamps = pd.to_datetime(df[timestamp_col])
+
+        if timestamp_col == 'Date of Measurement':
+            # DMA timestamps are in UTC, convert to CEST
+            if timestamps.dt.tz is None:
+                timestamps = timestamps.dt.tz_localize('UTC').dt.tz_convert('Europe/Vienna')
+            else:
+                timestamps = timestamps.dt.tz_convert('Europe/Vienna')
+        else:
+            # TrueDyne timestamps are already in local time (CEST)
+            if timestamps.dt.tz is None:
+                timestamps = timestamps.dt.tz_localize('Europe/Vienna')
+            else:
+                timestamps = timestamps.dt.tz_convert('Europe/Vienna')
+
+        return timestamps
+
+    except Exception as e:
+        print(f"Error parsing timestamps in column {timestamp_col}: {e}")
+        return pd.Series([pd.NaT] * len(df))
+def parse_timestamps_old(df, timestamp_col):
+    """
+    Parse timestamps from different formats to datetime objects
     """
     try:
         if timestamp_col == 'Date of Measurement':
@@ -74,7 +100,7 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
     try:
         # Read the CSV files
         print(f"Reading DMA data from {dma_file}...")
-        #dma_df = pd.read_csv(dma_file, delimiter=';')
+        print(f"DMA density will be converted from g/cm³ to kg/m³ during fusion")
         dma_df = pd.read_csv(dma_file, delimiter=';', encoding='latin-1')
 
         print(f"Reading TrueDyne data from {truedyne_file}...")
@@ -83,6 +109,19 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
 
         print(f"DMA data shape: {dma_df.shape}")
         print(f"TrueDyne data shape: {truedyne_df.shape}")
+
+        print(f"Reading DMA data from {dma_file}...")
+        dma_df = pd.read_csv(dma_file, delimiter=';', encoding='latin-1')
+        print(f"DMA density will be converted from g/cm³ to kg/m³ during fusion")
+
+        # Filter out invalid DMA density values
+        initial_count = len(dma_df)
+        dma_df = dma_df[dma_df['Density'] > 0]  # Remove zeros and negative values
+        filtered_count = len(dma_df)
+        dropped_count = initial_count - filtered_count
+
+        if dropped_count > 0:
+            print(f"Filtered out {dropped_count} DMA records with invalid density values (≤0)")
 
         # Parse timestamps
         print("Parsing timestamps...")
@@ -198,7 +237,8 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
                     'Number': dma_row['Sample Number'],
                     'Timestamp': dma_row['Date of Measurement'],
                     'T(cell)': dma_row['T (cell)'],
-                    'Density': dma_row['Density'],
+                    #'Density': dma_row['Density'],
+                    'Density': float(dma_row['Density']) * 1000,  # Convert g/cm³ to kg/m³
                     'TrueDyne MGCE1 Density (Average)': mgce1_density_avg,
                     'TrueDyne MGCE1 Density Uncertainty (std)': mgce1_density_std,
                     'TrueDyne MGCE1 Press (Average)': mgce1_press_avg,

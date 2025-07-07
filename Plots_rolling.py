@@ -11,7 +11,7 @@ def load_and_parse_data(filename):
         df = pd.read_csv(filename)
         df['parsed_timestamp'] = pd.to_datetime(df['Timestamp'], utc=True)
         df['local_time'] = df['parsed_timestamp'].dt.tz_convert('Europe/Zurich')
-        df['DMA_Density_kg_m3'] = df['Density'] * 1000
+
 
         print(f"Loaded {len(df)} data points")
         print(f"Time range: {df['local_time'].min()} to {df['local_time'].max()}")
@@ -36,7 +36,7 @@ def create_overview_plot(df, output_prefix="time_series", rolling_window=50):
     time_data = df['local_time']
 
     # Calculate rolling averages and uncertainties
-    dma_density_rolling = df['DMA_Density_kg_m3'].rolling(window=rolling_window, center=True).mean()
+    dma_density_rolling = df['Density'].rolling(window=rolling_window, center=True).mean()
 
     mgce1_density_rolling = df['TrueDyne MGCE1 Density (Average)'].rolling(window=rolling_window, center=True).mean()
     mgce1_density_uncertainty_rolling = (df['TrueDyne MGCE1 Density Uncertainty (std)'] ** 2).rolling(
@@ -61,7 +61,7 @@ def create_overview_plot(df, output_prefix="time_series", rolling_window=50):
     # Density plot
     # Original data (no error bars)
     fig.add_trace(go.Scatter(
-        x=time_data, y=df['DMA_Density_kg_m3'],
+        x=time_data, y=df['Density'],
         mode='lines+markers', name='DMA Density',
         line=dict(color='red', width=1), marker=dict(size=3),
         opacity=0.5
@@ -213,7 +213,7 @@ def create_density_plot(df, output_prefix="time_series", rolling_window=50):
     time_data = df['local_time']
 
     # Calculate rolling averages and uncertainties
-    dma_rolling = df['DMA_Density_kg_m3'].rolling(window=rolling_window, center=True).mean()
+    dma_rolling = df['Density'].rolling(window=rolling_window, center=True).mean()
 
     mgce1_rolling = df['TrueDyne MGCE1 Density (Average)'].rolling(window=rolling_window, center=True).mean()
     mgce1_uncertainty_rolling = (df['TrueDyne MGCE1 Density Uncertainty (std)'] ** 2).rolling(window=rolling_window,
@@ -227,7 +227,7 @@ def create_density_plot(df, output_prefix="time_series", rolling_window=50):
 
     # Original data (no error bars)
     fig.add_trace(go.Scatter(
-        x=time_data, y=df['DMA_Density_kg_m3'],
+        x=time_data, y=df['Density'],
         mode='lines+markers', name='DMA Density',
         line=dict(color='red', width=1), marker=dict(size=3),
         opacity=0.5
@@ -569,8 +569,7 @@ def print_statistics(df):
 
     # Basic measurements
     measurements = {
-        'DMA Density (g/cm³)': df['Density'],
-        'DMA Density (kg/m³)': df['DMA_Density_kg_m3'],
+        'DMA Density (kg/m³)': df['Density'],  # Now already in kg/m³
         'DMA Temperature': df['T(cell)'],
         'MGCE1 Density': df['TrueDyne MGCE1 Density (Average)'],
         'MGCE1 Pressure': df['TrueDyne MGCE1 Press (Average)'],
@@ -595,6 +594,115 @@ def print_statistics(df):
     for name, data in measurements.items():
         print(f"{name:20}: Mean={data.mean():.4f}, Range=[{data.min():.4f}, {data.max():.4f}]")
 
+
+def create_density_centered_plot(df, output_prefix="time_series", rolling_window=50):
+    """
+    Create density comparison plot centered around zero by subtracting DMA average.
+    This shows deviations from the DMA mean value.
+    """
+    fig = go.Figure()
+    time_data = df['local_time']
+
+    # Calculate DMA average
+    dma_average = df['Density'].mean()
+    print(f"DMA average density: {dma_average:.3f} kg/m³")
+    print(f"Centering all densities around zero by subtracting DMA average")
+
+    # Center all densities around zero
+    dma_centered = df['Density'] - dma_average
+    mgce1_centered = df['TrueDyne MGCE1 Density (Average)'] - dma_average
+    dgfi1_centered = df['TrueDyne DGFI1 Density (Average)'] - dma_average
+
+    # Calculate rolling averages for centered data
+    dma_rolling = dma_centered.rolling(window=rolling_window, center=True).mean()
+
+    mgce1_rolling = mgce1_centered.rolling(window=rolling_window, center=True).mean()
+    mgce1_uncertainty_rolling = (df['TrueDyne MGCE1 Density Uncertainty (std)'] ** 2).rolling(
+        window=rolling_window, center=True).mean().apply(lambda x: x ** 0.5 / (rolling_window ** 0.5))
+
+    dgfi1_rolling = dgfi1_centered.rolling(window=rolling_window, center=True).mean()
+    dgfi1_uncertainty_rolling = (df['TrueDyne DGFI1 Density Uncertainty (std)'] ** 2).rolling(
+        window=rolling_window, center=True).mean().apply(lambda x: x ** 0.5 / (rolling_window ** 0.5))
+
+    # Original data (centered, no error bars)
+    fig.add_trace(go.Scatter(
+        x=time_data, y=dma_centered,
+        mode='lines+markers', name='DMA Density (centered)',
+        line=dict(color='red', width=1), marker=dict(size=3),
+        opacity=0.5
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=time_data, y=mgce1_centered,
+        mode='lines+markers', name='MGCE1 Density (centered)',
+        line=dict(color='green', width=1), marker=dict(size=2),
+        opacity=0.5
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=time_data, y=dgfi1_centered,
+        mode='lines+markers', name='DGFI1 Density (centered)',
+        line=dict(color='blue', width=1), marker=dict(size=2),
+        opacity=0.5
+    ))
+
+    # Rolling averages with error bars
+    fig.add_trace(go.Scatter(
+        x=time_data, y=dma_rolling,
+        mode='lines', name='DMA Density (Rolling Avg)',
+        line=dict(color='red', width=4)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=time_data, y=mgce1_rolling,
+        error_y=dict(type='data', array=mgce1_uncertainty_rolling, visible=True),
+        mode='lines', name='MGCE1 Density (Rolling Avg)',
+        line=dict(color='green', width=3)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=time_data, y=dgfi1_rolling,
+        error_y=dict(type='data', array=dgfi1_uncertainty_rolling, visible=True),
+        mode='lines', name='DGFI1 Density (Rolling Avg)',
+        line=dict(color='blue', width=3)
+    ))
+
+    # Add horizontal line at zero
+    fig.add_hline(y=0, line_dash="dash", line_color="black",
+                  annotation_text="DMA Average", annotation_position="bottom right")
+
+    fig.update_layout(
+        title=f'Density Comparison - Centered Around DMA Average ({dma_average:.3f} kg/m³)<br>Rolling Average: {rolling_window} points',
+        xaxis_title='Time',
+        yaxis_title='Density Deviation [kg/m³]',
+        height=600,
+        template='plotly_white'
+    )
+
+    # Add text box with statistics
+    dma_std = dma_centered.std()
+    mgce1_std = mgce1_centered.std()
+    dgfi1_std = dgfi1_centered.std()
+
+    fig.add_annotation(
+        x=0.02, y=0.98,
+        text=(f"Standard Deviations:<br>"
+              f"DMA: {dma_std:.4f} kg/m³<br>"
+              f"MGCE1: {mgce1_std:.4f} kg/m³<br>"
+              f"DGFI1: {dgfi1_std:.4f} kg/m³"),
+        showarrow=False,
+        xref="paper", yref="paper",
+        xanchor="left", yanchor="top",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="black",
+        borderwidth=1
+    )
+
+    html_file = f"{output_prefix}_density_centered.html"
+    fig.write_html(html_file)
+    print(f"Saved: {html_file}")
+
+    return fig
 
 def main():
     """Main function"""
