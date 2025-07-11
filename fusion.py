@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import sys
+from decimal import Decimal, getcontext
+# Set precision high enough
+getcontext().prec = 10
 
 
 def parse_timestamps(df, timestamp_col):
@@ -237,8 +240,8 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
                     'Number': dma_row['Sample Number'],
                     'Timestamp': dma_row['Date of Measurement'],
                     'T(cell)': dma_row['T (cell)'],
-                    #'Density': dma_row['Density'],
-                    'Density': float(dma_row['Density']) * 1000,  # Convert g/cm³ to kg/m³
+                    'Density': float(Decimal(str(dma_row['Density'])) * 1000),
+                    #'Density': float(dma_row['Density']) * 1000,  # Convert g/cm³ to kg/m³
                     'TrueDyne MGCE1 Density (Average)': mgce1_density_avg,
                     'TrueDyne MGCE1 Density Uncertainty (std)': mgce1_density_std,
                     'TrueDyne MGCE1 Press (Average)': mgce1_press_avg,

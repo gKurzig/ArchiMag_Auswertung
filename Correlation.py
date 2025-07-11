@@ -82,6 +82,8 @@ def load_and_prepare_data(filename='fused_data_3.csv'):
     # Load the CSV data
     df = pd.read_csv(filename)
 
+    print(df.columns)
+
     # Clean column names for easier handling
     df.columns = df.columns.str.strip()
 
@@ -311,6 +313,218 @@ def create_density_timeseries_plot(df, df_analysis, window_size=50):
         print(f"Error creating density time series plot: {e}")
 #######################################################
 
+# #-----------------------------------
+# def calculate_unexplainable_difference(df, instrument='MGCE1', density_column='Density'):
+#     """
+#     Calculate the unexplainable difference between DMA (reference) and TrueDyne (unit under test)
+#     after removing systematic offset from TrueDyne.
+#     This shows the remaining noise/time instability after perfect calibration of TrueDyne.
+#
+#     Args:
+#         df: DataFrame with fused data
+#         instrument: 'MGCE1' or 'DGFI1'
+#         density_column: Column name for DMA density data (reference)
+#
+#     Returns:
+#         dict: Statistics about unexplainable differences
+#     """
+#
+#     # DMA is the reference, TrueDyne is unit under test
+#     dma_reference = df[density_column]
+#     truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
+#
+#     # Remove rows with NaN values
+#     valid_mask = ~(pd.isna(dma_reference) | pd.isna(truedyne_test))
+#     dma_clean = dma_reference[valid_mask]
+#     truedyne_clean = truedyne_test[valid_mask]
+#
+#     if len(dma_clean) == 0:
+#         return None
+#
+#     # Calculate the systematic offset (TrueDyne bias relative to DMA reference)
+#     systematic_offset = np.mean(truedyne_clean - dma_clean)
+#
+#     # Remove the systematic offset from TrueDyne (calibrate TrueDyne to DMA)
+#     truedyne_corrected = truedyne_clean - systematic_offset
+#
+#     # Calculate residual differences after calibrating TrueDyne to DMA
+#     residual_differences = truedyne_corrected - dma_clean
+#
+#     # Calculate statistics (all in kg/m³)
+#     stats = {
+#         'systematic_offset_kg_m3': systematic_offset,  # Positive = TrueDyne reads high
+#         'residual_std_kg_m3': np.std(residual_differences),
+#         'residual_mean_kg_m3': np.mean(residual_differences),  # Should be ~0 after correction
+#         'residual_max_abs_kg_m3': np.max(np.abs(residual_differences)),
+#         'residual_rms_kg_m3': np.sqrt(np.mean(residual_differences ** 2)),
+#         'correlation_coefficient': np.corrcoef(truedyne_corrected, dma_clean)[0, 1],
+#         'number_of_points': len(residual_differences)
+#     }
+#
+#     return stats
+#
+#
+# def print_unexplainable_difference_report(df):
+#     """
+#     Print a comprehensive report of unexplainable differences for both instruments.
+#     DMA is treated as reference, TrueDyne instruments as units under test.
+#     """
+#     print("\n" + "=" * 80)
+#     print("UNEXPLAINABLE DIFFERENCE ANALYSIS")
+#     print("(TrueDyne vs DMA Reference - After Perfect Calibration)")
+#     print("=" * 80)
+#
+#     for instrument in ['MGCE1', 'DGFI1']:
+#         print(f"\n{instrument} (Unit Under Test) vs DMA (Reference):")
+#         print("-" * 50)
+#
+#         stats = calculate_unexplainable_difference(df, instrument)
+#
+#         if stats is None:
+#             print(f"No valid data for {instrument}")
+#             continue
+#
+#         print(f"Number of data points: {stats['number_of_points']}")
+#         print(f"TrueDyne systematic bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³")
+#         if stats['systematic_offset_kg_m3'] > 0:
+#             print(f"  (TrueDyne reads {stats['systematic_offset_kg_m3']:.3f} kg/m³ higher than DMA)")
+#         else:
+#             print(f"  (TrueDyne reads {abs(stats['systematic_offset_kg_m3']):.3f} kg/m³ lower than DMA)")
+#         print(f"After calibrating TrueDyne to DMA reference:")
+#         print(f"  Residual mean: {stats['residual_mean_kg_m3']:.3f} kg/m³")
+#         print(f"  Residual std:  {stats['residual_std_kg_m3']:.3f} kg/m³")
+#         print(f"  Residual RMS:  {stats['residual_rms_kg_m3']:.3f} kg/m³")
+#         print(f"  Max deviation: {stats['residual_max_abs_kg_m3']:.3f} kg/m³")
+#         print(f"  Correlation:   {stats['correlation_coefficient']:.6f}")
+#
+#
+# def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=None):
+#     """
+#     Create a plot showing the comparison after offset correction and DMA mean subtraction.
+#     DMA is the reference, TrueDyne is corrected to match DMA.
+#     All values have the DMA mean subtracted to center around zero.
+#
+#     Args:
+#         df: DataFrame with fused data
+#         instrument: Primary instrument ('MGCE1' or 'DGFI1')
+#         second_instrument: Optional second instrument to add to the same plot
+#     """
+#     stats = calculate_unexplainable_difference(df, instrument)
+#
+#     if stats is None:
+#         print(f"No valid data for {instrument}")
+#         return
+#     print("<<<<<<<<<<Intersting part----------------------------------")
+#     # Prepare data
+#     dma_reference = df['Density']  # DMA is reference
+#     truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
+#     time_data = pd.to_datetime(df['Timestamp'])
+#
+#     # Remove NaN values
+#     valid_mask = ~(pd.isna(dma_reference) | pd.isna(truedyne_test))
+#     dma_clean = dma_reference[valid_mask]
+#     truedyne_clean = truedyne_test[valid_mask]
+#     time_clean = time_data[valid_mask]
+#
+#     # Calculate DMA mean for subtraction
+#     dma_mean = np.mean(dma_clean)
+#
+#     # Apply offset correction to TrueDyne (calibrate to DMA reference)
+#     truedyne_corrected = truedyne_clean - stats['systematic_offset_kg_m3']
+#
+#     # Subtract DMA mean from both DMA and corrected TrueDyne
+#     dma_centered = dma_clean - dma_mean
+#     truedyne_centered = truedyne_corrected - dma_mean
+#
+#     # Create single plot
+#     fig = go.Figure()
+#
+#     # Add DMA reference (centered)
+#     fig.add_trace(go.Scatter(
+#         x=time_clean, y=dma_centered,
+#         mode='lines', name='DMA Reference (centered)',
+#         line=dict(color='red', width=2)
+#     ))
+#
+#     # Add primary instrument (calibrated and centered)
+#     fig.add_trace(go.Scatter(
+#         x=time_clean, y=truedyne_centered,
+#         mode='lines', name=f'{instrument} Calibrated (centered)',
+#         line=dict(color='blue', width=2)
+#     ))
+#
+#     # Add second instrument if specified
+#     if second_instrument:
+#         stats2 = calculate_unexplainable_difference(df, second_instrument)
+#         if stats2 is not None:
+#             truedyne_test2 = df[f'TrueDyne {second_instrument} Density (Average)']
+#             valid_mask2 = ~(pd.isna(dma_reference) | pd.isna(truedyne_test2))
+#
+#             if np.any(valid_mask2):
+#                 dma_clean2 = dma_reference[valid_mask2]
+#                 truedyne_clean2 = truedyne_test2[valid_mask2]
+#                 time_clean2 = time_data[valid_mask2]
+#
+#                 # Apply offset correction and centering for second instrument
+#                 truedyne_corrected2 = truedyne_clean2 - stats2['systematic_offset_kg_m3']
+#                 truedyne_centered2 = truedyne_corrected2 - dma_mean
+#
+#                 fig.add_trace(go.Scatter(
+#                     x=time_clean2, y=truedyne_centered2,
+#                     mode='lines', name=f'{second_instrument} Calibrated (centered)',
+#                     line=dict(color='green', width=2)
+#                 ))
+#     fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=1, opacity=0.7)
+#
+#     # Update layout
+#     title_text = f'TrueDyne {instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
+#     if second_instrument:
+#         title_text = f'TrueDyne {instrument} & {second_instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
+#
+#     fig.update_layout(
+#         title=title_text,
+#         height=600,
+#         template='plotly_white',
+#         xaxis_title="Time",
+#         yaxis_title="Density Deviation from DMA Mean [kg/m³]"
+#     )
+#
+#     # Add text box with statistics
+#     bias_direction = "higher" if stats['systematic_offset_kg_m3'] > 0 else "lower"
+#     stats_text = (f"DMA Mean: {dma_mean:.3f} kg/m³<br>"
+#                   f"{instrument} bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction})<br>"
+#                   f"After calibration:<br>"
+#                   f"Residual RMS: {stats['residual_rms_kg_m3']:.3f} kg/m³<br>"
+#                   f"Correlation: {stats['correlation_coefficient']:.4f}")
+#
+#     if second_instrument and 'stats2' in locals():
+#         bias_direction2 = "higher" if stats2['systematic_offset_kg_m3'] > 0 else "lower"
+#         stats_text += (
+#             f"<br><br>{second_instrument} bias: {stats2['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction2})<br>"
+#             f"Residual RMS: {stats2['residual_rms_kg_m3']:.3f} kg/m³<br>"
+#             f"Correlation: {stats2['correlation_coefficient']:.4f}")
+#
+#     fig.add_annotation(
+#         x=0.02, y=0.98,
+#         text=stats_text,
+#         showarrow=False,
+#         xref="paper", yref="paper",
+#         xanchor="left", yanchor="top",
+#         bgcolor="rgba(255,255,255,0.8)",
+#         bordercolor="black",
+#         borderwidth=1
+#     )
+#
+#     # Save plot
+#     filename = f"truedyne_{instrument.lower()}_calibration_to_dma_centered.html"
+#     if second_instrument:
+#         filename = f"truedyne_{instrument.lower()}_{second_instrument.lower()}_calibration_to_dma_centered.html"
+#
+#     fig.write_html(filename)
+#     print(f"Saved: {filename}")
+#
+#     return fig
+
 
 def calculate_unexplainable_difference(df, instrument='MGCE1', density_column='Density'):
     """
@@ -396,10 +610,17 @@ def print_unexplainable_difference_report(df):
         print(f"  Correlation:   {stats['correlation_coefficient']:.6f}")
 
 
-def plot_offset_corrected_comparison(df, instrument='MGCE1'):
+def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
     """
-    Create a plot showing the comparison before and after offset correction.
+    Create a plot showing the comparison after offset correction and DMA mean subtraction.
     DMA is the reference, TrueDyne is corrected to match DMA.
+    All values have the DMA mean subtracted to center around zero.
+
+    Args:
+        df: DataFrame with fused data
+        instrument: Primary instrument ('MGCE1' or 'DGFI1')
+        second_instrument: Optional second instrument to add to the same plot
+        rolling_window: Window size for rolling average (default: 50)
     """
     stats = calculate_unexplainable_difference(df, instrument)
 
@@ -408,7 +629,7 @@ def plot_offset_corrected_comparison(df, instrument='MGCE1'):
         return
 
     # Prepare data
-    dma_reference = df['Density']  # DMA is reference (no conversion needed)
+    dma_reference = df['Density']  # DMA is reference
     truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
     time_data = pd.to_datetime(df['Timestamp'])
 
@@ -418,64 +639,119 @@ def plot_offset_corrected_comparison(df, instrument='MGCE1'):
     truedyne_clean = truedyne_test[valid_mask]
     time_clean = time_data[valid_mask]
 
+    # Calculate DMA mean for subtraction
+    dma_mean = np.mean(dma_clean)
+
     # Apply offset correction to TrueDyne (calibrate to DMA reference)
     truedyne_corrected = truedyne_clean - stats['systematic_offset_kg_m3']
 
-    # Create subplots
-    fig = make_subplots(
-        rows=2, cols=1,
-        subplot_titles=(
-            f'{instrument} vs DMA: Original Data',
-            f'{instrument} vs DMA: After Calibrating {instrument} to DMA Reference'
-        ),
-        vertical_spacing=0.1
-    )
+    # Subtract DMA mean from both DMA and corrected TrueDyne
+    dma_centered = dma_clean - dma_mean
+    truedyne_centered = truedyne_corrected - dma_mean
 
-    # Original data
+    # Calculate rolling averages
+    dma_rolling = pd.Series(dma_centered).rolling(window=rolling_window, center=True).mean()
+    truedyne_rolling = pd.Series(truedyne_centered).rolling(window=rolling_window, center=True).mean()
+
+    # Create single plot
+    fig = go.Figure()
+
+    # Add DMA reference (centered) - raw data
     fig.add_trace(go.Scatter(
-        x=time_clean, y=dma_clean,
-        mode='lines', name='DMA Reference',
+        x=time_clean, y=dma_centered,
+        mode='lines', name='DMA Reference (centered)',
+        line=dict(color='red', width=1, dash='dot'),
+        opacity=0.5
+    ))
+
+    # Add DMA rolling average
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=dma_rolling,
+        mode='lines', name=f'DMA Rolling Avg ({rolling_window} pts)',
         line=dict(color='red', width=2)
-    ), row=1, col=1)
+    ))
 
+    # Add primary instrument (calibrated and centered) - raw data
     fig.add_trace(go.Scatter(
-        x=time_clean, y=truedyne_clean,
-        mode='lines', name=f'{instrument} Original',
+        x=time_clean, y=truedyne_centered,
+        mode='lines', name=f'{instrument} Calibrated (centered)',
+        line=dict(color='blue', width=1, dash='dot'),
+        opacity=0.5
+    ))
+
+    # Add primary instrument rolling average
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=truedyne_rolling,
+        mode='lines', name=f'{instrument} Rolling Avg ({rolling_window} pts)',
         line=dict(color='blue', width=2)
-    ), row=1, col=1)
+    ))
 
-    # Corrected data
-    fig.add_trace(go.Scatter(
-        x=time_clean, y=dma_clean,
-        mode='lines', name='DMA Reference',
-        line=dict(color='red', width=2)
-    ), row=2, col=1)
+    # Add second instrument if specified
+    if second_instrument:
+        stats2 = calculate_unexplainable_difference(df, second_instrument)
+        if stats2 is not None:
+            truedyne_test2 = df[f'TrueDyne {second_instrument} Density (Average)']
+            valid_mask2 = ~(pd.isna(dma_reference) | pd.isna(truedyne_test2))
 
-    fig.add_trace(go.Scatter(
-        x=time_clean, y=truedyne_corrected,
-        mode='lines', name=f'{instrument} Calibrated',
-        line=dict(color='blue', width=2)
-    ), row=2, col=1)
+            if np.any(valid_mask2):
+                dma_clean2 = dma_reference[valid_mask2]
+                truedyne_clean2 = truedyne_test2[valid_mask2]
+                time_clean2 = time_data[valid_mask2]
+
+                # Apply offset correction and centering for second instrument
+                truedyne_corrected2 = truedyne_clean2 - stats2['systematic_offset_kg_m3']
+                truedyne_centered2 = truedyne_corrected2 - dma_mean
+                truedyne_rolling2 = pd.Series(truedyne_centered2).rolling(window=rolling_window, center=True).mean()
+
+                # Add raw data
+                fig.add_trace(go.Scatter(
+                    x=time_clean2, y=truedyne_centered2,
+                    mode='lines', name=f'{second_instrument} Calibrated (centered)',
+                    line=dict(color='green', width=1, dash='dot'),
+                    opacity=0.5
+                ))
+
+                # Add rolling average
+                fig.add_trace(go.Scatter(
+                    x=time_clean2, y=truedyne_rolling2,
+                    mode='lines', name=f'{second_instrument} Rolling Avg ({rolling_window} pts)',
+                    line=dict(color='green', width=2)
+                ))
+
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=1, opacity=0.7)
 
     # Update layout
-    fig.update_layout(
-        title=f'TrueDyne {instrument} Calibration to DMA Reference',
-        height=800,
-        template='plotly_white'
-    )
+    title_text = f'TrueDyne {instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
+    if second_instrument:
+        title_text = f'TrueDyne {instrument} & {second_instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
 
-    fig.update_yaxes(title_text="Density [kg/m³]", row=1, col=1)
-    fig.update_yaxes(title_text="Density [kg/m³]", row=2, col=1)
-    fig.update_xaxes(title_text="Time", row=2, col=1)
+    fig.update_layout(
+        title=title_text,
+        height=600,
+        template='plotly_white',
+        xaxis_title="Time",
+        yaxis_title="Density Deviation from DMA Mean [kg/m³]"
+    )
 
     # Add text box with statistics
     bias_direction = "higher" if stats['systematic_offset_kg_m3'] > 0 else "lower"
+    stats_text = (f"DMA Mean: {dma_mean:.3f} kg/m³<br>"
+                  f"{instrument} bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction})<br>"
+                  f"After calibration:<br>"
+                  f"Residual RMS: {stats['residual_rms_kg_m3']:.3f} kg/m³<br>"
+                  f"Correlation: {stats['correlation_coefficient']:.4f}")
+
+    if second_instrument and 'stats2' in locals():
+        bias_direction2 = "higher" if stats2['systematic_offset_kg_m3'] > 0 else "lower"
+        stats_text += (
+            f"<br><br>{second_instrument} bias: {stats2['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction2})<br>"
+            f"Residual RMS: {stats2['residual_rms_kg_m3']:.3f} kg/m³<br>"
+            f"Correlation: {stats2['correlation_coefficient']:.4f}")
+
     fig.add_annotation(
         x=0.02, y=0.98,
-        text=(f"TrueDyne bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction})<br>"
-              f"After calibration:<br>"
-              f"Residual RMS: {stats['residual_rms_kg_m3']:.3f} kg/m³<br>"
-              f"Correlation: {stats['correlation_coefficient']:.4f}"),
+        text=stats_text,
         showarrow=False,
         xref="paper", yref="paper",
         xanchor="left", yanchor="top",
@@ -485,11 +761,19 @@ def plot_offset_corrected_comparison(df, instrument='MGCE1'):
     )
 
     # Save plot
-    html_file = f"truedyne_{instrument.lower()}_calibration_to_dma.html"
-    fig.write_html(html_file)
-    print(f"Saved: {html_file}")
+    filename = f"truedyne_{instrument.lower()}_calibration_to_dma_centered.html"
+    if second_instrument:
+        filename = f"truedyne_{instrument.lower()}_{second_instrument.lower()}_calibration_to_dma_centered.html"
+
+    fig.write_html(filename)
+    print(f"Saved: {filename}")
 
     return fig
+
+
+
+
+
 
 
 

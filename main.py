@@ -2,15 +2,7 @@ import os
 from pathlib import Path
 
 from fusion import fuse_data_no_na
-from Read_ZIP import process_measurement_data
-from file_selector import select_zip_file
-
-# DATA_FOLDER = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250624_Messreihe_6"  # Edit this path
-# DMA_FILE = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250624_Messreihe_6\measurement_data.csv"
-# #TRUEDYNE_FILE = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250624_Messreihe_6\DMA_Results_20250624_173803_truedyne_buffer.csv"
-#
-# TRUEDYNE_FILE =r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250526_Messreihe_1\Auswertung\DMA_Results_20250517_071956_truedyne_buffer.csv"
-# OUTPUT_FILE = "fused_data.csv"
+from file_selector import main as file_selector_main
 
 # Add these instead:
 DATA_FOLDER = None
@@ -22,7 +14,7 @@ OUTPUT_FILE = "fused_data.csv"
 def getFiles():
     global DATA_FOLDER, DMA_FILE, TRUEDYNE_FILE, OUTPUT_FILE
 
-    from file_selector import main as file_selector_main
+
 
     # Use file_selector to get configuration
     config = file_selector_main()
@@ -44,25 +36,7 @@ def getFiles():
 
     return True
 
-def getFiles_old():
-    global DMA_FILE, TRUEDYNE_FILE, OUTPUT_FILE
-    zip_path = select_zip_file()
 
-    csv_file, buffer_file = process_measurement_data(zip_path)
-
-    print("CSV:",csv_file)
-    print("Buffer:",buffer_file)
-    print("File:",zip_path)
-
-    DATA_FOLDER = str(Path(zip_path).with_suffix(''))
-    Path(DATA_FOLDER).mkdir(exist_ok=True)
-
-    #DATA_FOLDER = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250623_Messreihe_5"  # Edit this path
-    DMA_FILE = csv_file#r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250623_Messreihe_5\measurement_data.csv"
-    TRUEDYNE_FILE = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\20250623_Messreihe_5\measurements_20250623_134632\truedyne_buffer_standardized.csv"
-    OUTPUT_FILE = "fused_data.csv"
-    #OUTPUT_FILE = str(Path(DATA_FOLDER).resolve() / "fused_data.csv")
-    #OUTPUT_FILE = r"C:\Users\kurzm\Documents\Physik\MasterArbeit\Ergebnisse\TestMessung\measurements_20250623_134632\fused_data.csv"
 def fuse_dma_TrueDyne():
     print(f"Running fusion...")
     print(f"DMA file: {DMA_FILE}")
@@ -165,25 +139,26 @@ def correlation_analysis():
         df, df_analysis, numerical_cols = load_and_prepare_data(OUTPUT_FILE)
         # Add this to the correlation_analysis() function
         print_unexplainable_difference_report(df)
-        plot_offset_corrected_comparison(df, 'MGCE1')
-        plot_offset_corrected_comparison(df, 'DGFI1')
+        #plot_offset_corrected_comparison(df, 'MGCE1','DGFI1')
+        #plot_offset_corrected_comparison(df, 'DGFI1')
+        plot_offset_corrected_comparison(df, 'MGCE1','DGFI1', rolling_window=10)
 
 
-        print("\nCreating correlation plots...")
-        print(df.columns)
-        print(df_analysis.columns)
-        window_size = 50
-
-        # # Create the main plots
-        create_density_timeseries_plot_seperat(df, df_analysis, window_size)
-        create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1', window_size=window_size)
-        create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
-
-        create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1',window_size=window_size)
-        create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
-
-        plot_three_densities_with_averages(df_analysis)
+        # print("\nCreating correlation plots...")
+        # print(df.columns)
+        # print(df_analysis.columns)
+        # window_size = 50
         #
+        # # # Create the main plots
+        # create_density_timeseries_plot_seperat(df, df_analysis, window_size)
+        # create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1', window_size=window_size)
+        # create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
+        #
+        # create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1',window_size=window_size)
+        # create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
+        #
+        # plot_three_densities_with_averages(df_analysis)
+        # #
         # print(f"Correlation analysis saved in: {DATA_FOLDER}/correlation/")
         print(f"Correlation analysis saved in: {correlation_folder}")
         print("Open the HTML files in your browser.")

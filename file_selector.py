@@ -86,19 +86,19 @@ def process_zip_to_csv(zip_file_path, output_csv_path):
                     temperature = dma4501.get('temperature', '')
                     density = dma4501.get('density', '')
 
-                    # Format temperature to 2 decimal places if it's a number
-                    try:
-                        if temperature:
-                            temperature = f"{float(temperature):.2f}"
-                    except (ValueError, TypeError):
-                        temperature = str(temperature)
-
-                    # Format density to match the sample format (5 decimal places)
-                    try:
-                        if density:
-                            density = f"{float(density):.5f}"
-                    except (ValueError, TypeError):
-                        density = str(density)
+                    # # Format temperature to 3 decimal places if it's a number
+                    # try:
+                    #     if temperature:
+                    #         temperature = f"{float(temperature):.3f}"
+                    # except (ValueError, TypeError):
+                    #     temperature = str(temperature)
+                    #
+                    # # Format density to match the sample format (6 decimal places)
+                    # try:
+                    #     if density:
+                    #         density = f"{float(density):.6f}"
+                    # except (ValueError, TypeError):
+                    #     density = str(density)
 
                     # Create row
                     row = [
@@ -118,11 +118,11 @@ def process_zip_to_csv(zip_file_path, output_csv_path):
                 except Exception as e:
                     print(f"Error processing file {json_file}: {e}")
 
-        # Sort rows by sample number if possible
-        try:
-            rows.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
-        except:
-            pass  # If sorting fails, keep original order
+        # # Sort rows by sample number if possible
+        # try:
+        #     rows.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+        # except:
+        #     pass  # If sorting fails, keep original order
 
         # Write to CSV
         with open(output_csv_path, 'w', newline='', encoding='utf-8') as csvfile:
