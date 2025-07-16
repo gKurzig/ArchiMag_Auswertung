@@ -149,6 +149,13 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
             'TrueDyne DGFI1 Temp [C]'
         ]
 
+        # Add Scale Weight to critical columns if it exists
+        if 'Scale Weight [g]' in truedyne_df.columns:
+            critical_columns.append('Scale Weight [g]')
+            print("Scale Weight [g] column found and added to critical columns")
+        else:
+            print("WARNING: Scale Weight [g] column not found in TrueDyne data")
+
         # Drop rows where any critical column has missing values
         truedyne_df = truedyne_df.dropna(subset=critical_columns)
 
@@ -231,11 +238,23 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
             dgfi1_press_avg, dgfi1_press_std = calculate_stats(window_data['TrueDyne DGFI1 Press [Pa]'].tolist())
             dgfi1_temp_avg, dgfi1_temp_std = calculate_stats(window_data['TrueDyne DGFI1 Temp [C]'].tolist())
 
-            # Only include if we have valid measurements (no NaN)
-            if (pd.notna(mgce1_density_avg) and pd.notna(mgce1_press_avg) and pd.notna(mgce1_temp_avg) and
-                    pd.notna(dgfi1_density_avg) and pd.notna(dgfi1_press_avg) and pd.notna(dgfi1_temp_avg)):
+            # Calculate statistics for Scale Weight
+            scale_weight_avg, scale_weight_std = np.nan, np.nan
+            if 'Scale Weight [g]' in window_data.columns:
+                scale_weight_avg, scale_weight_std = calculate_stats(window_data['Scale Weight [g]'].tolist())
 
-                # Create result row
+                # Check if we have valid measurements (including Scale Weight if present)
+                required_valid = (
+                            pd.notna(mgce1_density_avg) and pd.notna(mgce1_press_avg) and pd.notna(mgce1_temp_avg) and
+                            pd.notna(dgfi1_density_avg) and pd.notna(dgfi1_press_avg) and pd.notna(dgfi1_temp_avg))
+
+            # If Scale Weight column exists, also require it to be valid
+            if 'Scale Weight [g]' in truedyne_df.columns:
+                required_valid = required_valid and pd.notna(scale_weight_avg)
+
+            # Only include if we have valid measurements (no NaN)
+            if required_valid:
+            # Create result row
                 result_row = {
                     'Number': dma_row['Sample Number'],
                     'Timestamp': dma_row['Date of Measurement'],
@@ -256,6 +275,10 @@ def fuse_data_no_na(dma_file, truedyne_file, output_file):
                     'TrueDyne DGFI1 Temp Uncertainty (std)': dgfi1_temp_std
                 }
 
+                # Add Scale Weight columns if the data exists
+                if 'Scale Weight [g]' in truedyne_df.columns:
+                    result_row['Scale Weight (Average) [g]'] = scale_weight_avg
+                    result_row['Scale Weight Uncertainty (std) [g]'] = scale_weight_std
                 results.append(result_row)
             else:
                 print(f"  Skipping due to invalid TrueDyne calculations")

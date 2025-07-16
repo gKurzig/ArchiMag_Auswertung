@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fusion import fuse_data_no_na
 from file_selector import main as file_selector_main
+from Waage_Auswertung import showWeight
 
 # Add these instead:
 DATA_FOLDER = None
@@ -143,7 +144,7 @@ def correlation_analysis():
         #plot_offset_corrected_comparison(df, 'DGFI1')
         plot_offset_corrected_comparison(df, 'MGCE1','DGFI1', rolling_window=10)
 
-
+        showWeight(df)
         # print("\nCreating correlation plots...")
         # print(df.columns)
         # print(df_analysis.columns)

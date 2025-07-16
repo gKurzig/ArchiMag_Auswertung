@@ -792,7 +792,6 @@ def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=N
 
 
 
-
 #############################################
 def create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1', window_size=50):
     """Create plot showing the difference between DMA and specified TrueDyne instrument rolling averages."""
