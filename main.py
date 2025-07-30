@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fusion import fuse_data_no_na
 from file_selector import main as file_selector_main
-from Waage_Auswertung import showWeight
+from Waage_Auswertung import plot_dma_weight
 
 # Add these instead:
 DATA_FOLDER = None
@@ -14,8 +14,6 @@ OUTPUT_FILE = "fused_data.csv"
 
 def getFiles():
     global DATA_FOLDER, DMA_FILE, TRUEDYNE_FILE, OUTPUT_FILE
-
-
 
     # Use file_selector to get configuration
     config = file_selector_main()
@@ -72,20 +70,10 @@ def plotting():
         # Change to plots folder
         os.chdir(plots_folder)
 
-        # # Create plots folder
-        # plots_folder = "plots"
-        # if not os.path.exists(plots_folder):
-        #     os.makedirs(plots_folder)
-        #     print(f"Created plots folder: {plots_folder}")
-
-        # Change to plots folder
-        os.chdir(plots_folder)
-
         from Plots_rolling import load_and_parse_data, create_overview_plot, create_density_plot, create_pressure_plot, \
-            create_temperature_plot, create_uncertainty_plot, print_statistics,create_density_centered_plot
+            create_temperature_plot, create_uncertainty_plot, print_statistics, create_density_centered_plot
 
         # Load the output file from parent directory
-        #plot_df = load_and_parse_data(f"../{OUTPUT_FILE}")
         plot_df = load_and_parse_data(OUTPUT_FILE)
         print_statistics(plot_df)
 
@@ -98,11 +86,45 @@ def plotting():
         create_uncertainty_plot(plot_df, "fused_plots")
         create_density_centered_plot(plot_df, "fused_plots", rolling_window)
 
-
-        # print(f"Plots saved in: {DATA_FOLDER}/plots/")
         print(f"Plots saved in: {plots_folder}")
-
         print("Open the HTML files in your browser.")
+
+    finally:
+        os.chdir(original_dir)
+
+
+def weight_analysis():
+    """Run weight analysis on TrueDyne file"""
+    # Change to data directory
+    original_dir = os.getcwd()
+    os.chdir(DATA_FOLDER)
+
+    try:
+        print("=== Running Weight Analysis ===")
+
+        # Create correlation folder in the same location as measurement data
+        correlation_folder = os.path.join(DATA_FOLDER, "correlation")
+        if not os.path.exists(correlation_folder):
+            os.makedirs(correlation_folder)
+            print(f"Created correlation folder: {correlation_folder}")
+
+        # Change to correlation folder
+        os.chdir(correlation_folder)
+
+        # Create weight plot from TrueDyne file
+        weight_plot_file = "truedyne_weight_plot.html"
+        print(f"Creating weight plot from TrueDyne file: {TRUEDYNE_FILE}")
+
+        try:
+            fig = plot_dma_weight(TRUEDYNE_FILE, weight_column=None, output_file=weight_plot_file)
+            if fig is not None:
+                print(f"Weight plot saved as: {weight_plot_file}")
+            else:
+                print("Failed to create weight plot")
+        except Exception as e:
+            print(f"Error creating weight plot: {e}")
+
+        print(f"Weight analysis saved in: {correlation_folder}")
 
     finally:
         os.chdir(original_dir)
@@ -117,8 +139,6 @@ def correlation_analysis():
     try:
         print("=== Running Correlation Analysis ===")
 
-
-
         # Create correlation folder in the same location as measurement data
         correlation_folder = os.path.join(DATA_FOLDER, "correlation")
         if not os.path.exists(correlation_folder):
@@ -128,39 +148,23 @@ def correlation_analysis():
         # Change to correlation folder
         os.chdir(correlation_folder)
 
-
         from Correlation import (load_and_prepare_data, create_density_timeseries_plot_seperat,
                                  create_dma_truedyne_rolling_difference_plot,
                                  create_dma_total_avg_truedyne_rolling_difference_plot,
-                                 plot_three_densities_with_averages,print_unexplainable_difference_report,
+                                 plot_three_densities_with_averages, print_unexplainable_difference_report,
                                  plot_offset_corrected_comparison)
 
         # Load the output file from parent directory
-        #df, df_analysis, numerical_cols = load_and_prepare_data(f"../{OUTPUT_FILE}")
         df, df_analysis, numerical_cols = load_and_prepare_data(OUTPUT_FILE)
-        # Add this to the correlation_analysis() function
-        print_unexplainable_difference_report(df)
-        #plot_offset_corrected_comparison(df, 'MGCE1','DGFI1')
-        #plot_offset_corrected_comparison(df, 'DGFI1')
-        plot_offset_corrected_comparison(df, 'MGCE1','DGFI1', rolling_window=10)
 
-        showWeight(df)
-        # print("\nCreating correlation plots...")
-        # print(df.columns)
-        # print(df_analysis.columns)
-        # window_size = 50
-        #
-        # # # Create the main plots
-        # create_density_timeseries_plot_seperat(df, df_analysis, window_size)
-        # create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1', window_size=window_size)
-        # create_dma_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
-        #
-        # create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='MGCE1',window_size=window_size)
-        # create_dma_total_avg_truedyne_rolling_difference_plot(df, df_analysis, instrument='DGFI1', window_size=window_size)
-        #
-        # plot_three_densities_with_averages(df_analysis)
-        # #
-        # print(f"Correlation analysis saved in: {DATA_FOLDER}/correlation/")
+
+        print_unexplainable_difference_report(df)
+        plot_offset_corrected_comparison(df, 'MGCE1', 'DGFI1', rolling_window=10)
+
+        # Import and call showWeight function
+        #from Waage_Auswertung import showWeight
+        #showWeight(df)
+
         print(f"Correlation analysis saved in: {correlation_folder}")
         print("Open the HTML files in your browser.")
 
@@ -168,12 +172,12 @@ def correlation_analysis():
         os.chdir(original_dir)
 
 
-
 if __name__ == "__main__":
     if getFiles():
         success = fuse_dma_TrueDyne()
         if success and os.path.exists(OUTPUT_FILE):
             plotting()
+            #weight_analysis()  # Add weight analysis step
             correlation_analysis()
         else:
             print("Fusion failed or no output file created. Skipping plots.")

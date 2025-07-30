@@ -610,7 +610,7 @@ def print_unexplainable_difference_report(df):
         print(f"  Correlation:   {stats['correlation_coefficient']:.6f}")
 
 
-def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
+def plot_offset_corrected_comparison_without_Scale(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
     """
     Create a plot showing the comparison after offset correction and DMA mean subtraction.
     DMA is the reference, TrueDyne is corrected to match DMA.
@@ -787,7 +787,226 @@ def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=N
 
 
 
+def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
+    """
+    Create a plot showing the comparison after offset correction and DMA mean subtraction.
+    DMA is the reference, TrueDyne is corrected to match DMA.
+    All values have the DMA mean subtracted to center around zero.
+    Scale weight is plotted on a separate right y-axis.
 
+    Args:
+        df: DataFrame with fused data
+        instrument: Primary instrument ('MGCE1' or 'DGFI1')
+        second_instrument: Optional second instrument to add to the same plot
+        rolling_window: Window size for rolling average (default: 50)
+    """
+    stats = calculate_unexplainable_difference(df, instrument)
+
+    if stats is None:
+        print(f"No valid data for {instrument}")
+        return
+
+    # Prepare data
+    dma_reference = df['Density']  # DMA is reference
+    truedyne_test = df[f'TrueDyne {instrument} Density (Average)']
+    scale_weight = df['Scale Weight (Average) [g]']
+    time_data = pd.to_datetime(df['Timestamp'])
+
+    # Remove NaN values for density comparison
+    valid_mask = ~(pd.isna(dma_reference) | pd.isna(truedyne_test))
+    dma_clean = dma_reference[valid_mask]
+    truedyne_clean = truedyne_test[valid_mask]
+    time_clean = time_data[valid_mask]
+
+    # Calculate DMA mean for subtraction
+    dma_mean = np.mean(dma_clean)
+
+    # Apply offset correction to TrueDyne (calibrate to DMA reference)
+    truedyne_corrected = truedyne_clean - stats['systematic_offset_kg_m3']
+
+    # Subtract DMA mean from both DMA and corrected TrueDyne
+    dma_centered = dma_clean - dma_mean
+    truedyne_centered = truedyne_corrected - dma_mean
+
+    # Calculate rolling averages for density data
+    dma_rolling = pd.Series(dma_centered).rolling(window=rolling_window, center=True).mean()
+    truedyne_rolling = pd.Series(truedyne_centered).rolling(window=rolling_window, center=True).mean()
+
+    # Prepare scale weight data
+    valid_scale_mask = ~pd.isna(scale_weight)
+    scale_clean = scale_weight[valid_scale_mask]
+    time_scale_clean = time_data[valid_scale_mask]
+    scale_rolling = pd.Series(scale_clean).rolling(window=rolling_window, center=True).mean()
+
+    # Calculate correlation between DMA and Scale Weight
+    # Need to align the data for correlation calculation
+    common_times = pd.Index(time_clean).intersection(pd.Index(time_scale_clean))
+    if len(common_times) > 1:
+        dma_for_corr = dma_reference[time_data.isin(common_times)]
+        scale_for_corr = scale_weight[time_data.isin(common_times)]
+        # Remove any remaining NaN values
+        valid_corr_mask = ~(pd.isna(dma_for_corr) | pd.isna(scale_for_corr))
+        if np.sum(valid_corr_mask) > 1:
+            correlation_dma_scale = np.corrcoef(dma_for_corr[valid_corr_mask],
+                                              scale_for_corr[valid_corr_mask])[0, 1]
+            print(f"Correlation calculated using {np.sum(valid_corr_mask)} paired data points")
+        else:
+            correlation_dma_scale = np.nan
+    else:
+        correlation_dma_scale = np.nan
+
+    # Calculate correlation between MGCE1 and Scale Weight
+    if len(common_times) > 1:
+        mgce1_for_corr = df[f'TrueDyne MGCE1 Density (Average)'][time_data.isin(common_times)]
+        valid_mgce1_corr_mask = ~(pd.isna(mgce1_for_corr) | pd.isna(scale_for_corr))
+        if np.sum(valid_mgce1_corr_mask) > 1:
+            correlation_mgce1_scale = np.corrcoef(mgce1_for_corr[valid_mgce1_corr_mask],
+                                                  scale_for_corr[valid_mgce1_corr_mask])[0, 1]
+            print(f"MGCE1-Scale correlation calculated using {np.sum(valid_mgce1_corr_mask)} paired data points")
+        else:
+            correlation_mgce1_scale = np.nan
+    else:
+        correlation_mgce1_scale = np.nan
+
+    # Create subplot with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add DMA reference (centered) - raw data
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=dma_centered,
+        mode='lines', name='DMA Reference (centered)',
+        line=dict(color='red', width=1, dash='dot'),
+        opacity=0.5
+    ), secondary_y=False)
+
+    # Add DMA rolling average
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=dma_rolling,
+        mode='lines', name=f'DMA Rolling Avg ({rolling_window} pts)',
+        line=dict(color='red', width=2)
+    ), secondary_y=False)
+
+    # Add primary instrument (calibrated and centered) - raw data
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=truedyne_centered,
+        mode='lines', name=f'{instrument} Calibrated (centered)',
+        line=dict(color='blue', width=1, dash='dot'),
+        opacity=0.5
+    ), secondary_y=False)
+
+    # Add primary instrument rolling average
+    fig.add_trace(go.Scatter(
+        x=time_clean, y=truedyne_rolling,
+        mode='lines', name=f'{instrument} Rolling Avg ({rolling_window} pts)',
+        line=dict(color='blue', width=2)
+    ), secondary_y=False)
+
+    # Add second instrument if specified
+    if second_instrument:
+        stats2 = calculate_unexplainable_difference(df, second_instrument)
+        if stats2 is not None:
+            truedyne_test2 = df[f'TrueDyne {second_instrument} Density (Average)']
+            valid_mask2 = ~(pd.isna(dma_reference) | pd.isna(truedyne_test2))
+
+            if np.any(valid_mask2):
+                dma_clean2 = dma_reference[valid_mask2]
+                truedyne_clean2 = truedyne_test2[valid_mask2]
+                time_clean2 = time_data[valid_mask2]
+
+                # Apply offset correction and centering for second instrument
+                truedyne_corrected2 = truedyne_clean2 - stats2['systematic_offset_kg_m3']
+                truedyne_centered2 = truedyne_corrected2 - dma_mean
+                truedyne_rolling2 = pd.Series(truedyne_centered2).rolling(window=rolling_window, center=True).mean()
+
+                # Add raw data
+                fig.add_trace(go.Scatter(
+                    x=time_clean2, y=truedyne_centered2,
+                    mode='lines', name=f'{second_instrument} Calibrated (centered)',
+                    line=dict(color='green', width=1, dash='dot'),
+                    opacity=0.5
+                ), secondary_y=False)
+
+                # Add rolling average
+                fig.add_trace(go.Scatter(
+                    x=time_clean2, y=truedyne_rolling2,
+                    mode='lines', name=f'{second_instrument} Rolling Avg ({rolling_window} pts)',
+                    line=dict(color='green', width=2)
+                ), secondary_y=False)
+
+    # Add scale weight data on secondary y-axis
+    fig.add_trace(go.Scatter(
+        x=time_scale_clean, y=scale_clean,
+        mode='lines', name='Scale Weight',
+        line=dict(color='orange', width=1, dash='dot'),
+        opacity=0.5,
+        yaxis='y2'
+    ), secondary_y=True)
+
+    # Add scale weight rolling average
+    fig.add_trace(go.Scatter(
+        x=time_scale_clean, y=scale_rolling,
+        mode='lines', name=f'Scale Weight Rolling Avg ({rolling_window} pts)',
+        line=dict(color='orange', width=2),
+        yaxis='y2'
+    ), secondary_y=True)
+
+    # Add zero line for primary y-axis
+    fig.add_hline(y=0, line_dash="dash", line_color="black", line_width=1, opacity=0.7)
+
+    # Set y-axes titles
+    fig.update_yaxes(title_text="Density Deviation from DMA Mean [kg/m³]", secondary_y=False)
+    fig.update_yaxes(title_text="Scale Weight [g]", secondary_y=True)
+
+    # Update layout
+    title_text = f'TrueDyne {instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
+    if second_instrument:
+        title_text = f'TrueDyne {instrument} & {second_instrument} Calibrated to DMA Reference (DMA Mean Subtracted)'
+
+    fig.update_layout(
+        title=title_text,
+        height=600,
+        template='plotly_white',
+        xaxis_title="Time"
+    )
+
+    # Add text box with statistics
+    bias_direction = "higher" if stats['systematic_offset_kg_m3'] > 0 else "lower"
+    stats_text = (f"DMA Mean: {dma_mean:.3f} kg/m³<br>"
+                  f"{instrument} bias: {stats['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction})<br>"
+                  f"After calibration:<br>"
+                  f"Residual RMS: {stats['residual_rms_kg_m3']:.3f} kg/m³<br>"
+                  f"Correlation: {stats['correlation_coefficient']:.4f}<br>"
+                  f"<br>DMA-Scale Correlation: {correlation_dma_scale:.4f}<br>"
+                  f"MGCE1-Scale Correlation: {correlation_mgce1_scale:.4f}")
+
+    if second_instrument and 'stats2' in locals():
+        bias_direction2 = "higher" if stats2['systematic_offset_kg_m3'] > 0 else "lower"
+        stats_text += (
+            f"<br><br>{second_instrument} bias: {stats2['systematic_offset_kg_m3']:.3f} kg/m³ ({bias_direction2})<br>"
+            f"Residual RMS: {stats2['residual_rms_kg_m3']:.3f} kg/m³<br>"
+            f"Correlation: {stats2['correlation_coefficient']:.4f}")
+
+    fig.add_annotation(
+        x=0.02, y=0.98,
+        text=stats_text,
+        showarrow=False,
+        xref="paper", yref="paper",
+        xanchor="left", yanchor="top",
+        bgcolor="rgba(255,255,255,0.8)",
+        bordercolor="black",
+        borderwidth=1
+    )
+
+    # Save plot
+    filename = f"truedyne_{instrument.lower()}_calibration_to_dma_centered_with_scale.html"
+    if second_instrument:
+        filename = f"truedyne_{instrument.lower()}_{second_instrument.lower()}_calibration_to_dma_centered_with_scale.html"
+
+    fig.write_html(filename)
+    print(f"Saved: {filename}")
+    print(f"DMA-Scale Weight Correlation: {correlation_dma_scale:.4f}")
+
+    return fig
 
 
 
