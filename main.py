@@ -158,7 +158,7 @@ def correlation_analysis():
         df, df_analysis, numerical_cols = load_and_prepare_data(OUTPUT_FILE)
 
 
-        print_unexplainable_difference_report(df)
+        #print_unexplainable_difference_report(df)
         plot_offset_corrected_comparison(df, 'MGCE1', 'DGFI1', rolling_window=10)
 
         # Import and call showWeight function
