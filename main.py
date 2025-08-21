@@ -152,15 +152,18 @@ def correlation_analysis():
                                  create_dma_truedyne_rolling_difference_plot,
                                  create_dma_total_avg_truedyne_rolling_difference_plot,
                                  plot_three_densities_with_averages, print_unexplainable_difference_report,
-                                 plot_offset_corrected_comparison)
+                                 plot_offset_corrected_comparison_old)
+
+        from derEineGutePlot import plot_offset_corrected_comparison
 
         # Load the output file from parent directory
         df, df_analysis, numerical_cols = load_and_prepare_data(OUTPUT_FILE)
 
 
         #print_unexplainable_difference_report(df)
-        plot_offset_corrected_comparison(df, 'MGCE1', 'DGFI1', rolling_window=10)
+        #plot_offset_corrected_comparison_old(df, 'MGCE1', 'DGFI1', rolling_window=10)
 
+        fig = plot_offset_corrected_comparison(df, 'MGCE1', 'DGFI1')
         # Import and call showWeight function
         #from Waage_Auswertung import showWeight
         #showWeight(df)

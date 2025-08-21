@@ -82,6 +82,8 @@ def load_and_prepare_data(filename='fused_data_3.csv'):
     # Load the CSV data
     df = pd.read_csv(filename)
 
+
+    print("---------------  df :  ------------------")
     print(df.columns)
 
     # Clean column names for easier handling
@@ -787,7 +789,7 @@ def plot_offset_corrected_comparison_without_Scale(df, instrument='MGCE1', secon
 
 
 
-def plot_offset_corrected_comparison(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
+def plot_offset_corrected_comparison_old(df, instrument='MGCE1', second_instrument=None, rolling_window=50):
     """
     Create a plot showing the comparison after offset correction and DMA mean subtraction.
     DMA is the reference, TrueDyne is corrected to match DMA.
